@@ -91,7 +91,7 @@ class CarparkManager(CarparkSensorListener, CarparkDataProvider):
         car = self.cars.pop(license_plate)
         car.leave()
 
-        self._available_spaces += 1
+        self._available_spaces = min(self._available_spaces + 1, self.total_spaces)
 
         self.log("Car exited", license_plate)
 
@@ -99,6 +99,10 @@ class CarparkManager(CarparkSensorListener, CarparkDataProvider):
 
         self._temperature = reading
         self.log("Temperature update", reading)
+
+    def __del__(self):
+        if hasattr(self, 'log_file') and not self.log_file.closed:
+            self.log_file.close()
 
     # -----------------------------
     # Logging
@@ -243,7 +247,7 @@ class CarDetectorWindow:
         self.temp_var = tk.StringVar()
         self.temp_var.trace_add(
             "write",
-            lambda *args: self.temperature_changed(float(self.temp_var.get()))
+            lambda *args: self._on_temp_changed()
         )
 
         tk.Entry(root, textvariable=self.temp_var, font=('Arial', 20)).grid(row=2, column=1)
@@ -257,6 +261,14 @@ class CarDetectorWindow:
     @property
     def current_license(self):
         return self.plate_var.get()
+
+    def _on_temp_changed(self):
+        try:
+            value = float(self.temp_var.get())
+            for listener in self.listeners:
+                listener.temperature_reading(value)
+        except ValueError:
+            pass  # Ignore incomplete or invalid input
 
     def add_listener(self, listener):
         if isinstance(listener, CarparkSensorListener):
@@ -273,7 +285,7 @@ class CarDetectorWindow:
             listener.outgoing_car(self.current_license)
 
     def temperature_changed(self, temp):
-
+        # Kept for external callers; internal use goes via _on_temp_changed
         for listener in self.listeners:
             listener.temperature_reading(temp)
 
